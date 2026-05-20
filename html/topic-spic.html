@@ -14,7 +14,7 @@
   <div class="container">
     <!-- 标题 -->
     <div class="topic-header">
-      <h1><a href="/read.php?tid={{ topic.id }}">{{ topic.title }}</a></h1>
+      <h1 class="{{ titleHeadingClass }}"><a href="/read.php?tid={{ topic.id }}">{{ topic.title }}</a></h1>
       <!-- <img src="{{authorAvatar}}" alt="avatar" /> -->
     </div>
 
@@ -101,6 +101,7 @@
             <span class="time">{{$value.time}}</span>
             <span><a class="thanks" pid="{{ $value.pid }}" href="javascript:;" onclick="vsPostMessage('like',  <%= {reply:$value.pid, __topic: topic } %>);" title="赞同">👍 </a><span pid="{{ $value.pid }}">{{$value.likes}}</span></span>
             <!-- <span class="thanks">👍 {{ $value.likes }}</span> -->
+            <a class="reply-btn" href="javascript:;" onclick="quoteReply('{{$value.pid}}', '{{$value.user.uid}}', '{{$value.user.userNmae}}', '{{$value.floor}}');" title="回复此楼">Re</a>
             <span class="floor">{{$value.floor}}</span>
           </div>
           {{if $value.quote}}
@@ -150,6 +151,17 @@
     <% } %>
     </div>
     {{/if}}
+
+    <!-- 回复框 -->
+    <hr />
+    <div class="post-reply">
+      <div id="quoteInfo" style="display:none; margin-bottom:8px;">
+        <blockquote id="quoteContent" style="font-size:12px;"></blockquote>
+        <a href="javascript:;" onclick="clearQuote();" style="font-size:12px;">取消引用</a>
+      </div>
+      <textarea id="replyBox" placeholder="回复..."></textarea>
+      <button class="submit" onclick="onSubmit();">发送</button>
+    </div>
 
   </div>
 

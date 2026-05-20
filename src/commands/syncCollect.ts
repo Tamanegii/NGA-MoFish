@@ -6,6 +6,7 @@ import http from "../http";
 import CustomProvider from "../providers/CustomProvider";
 import { Topic } from "../models/topic";
 import { Node } from "../models/node";
+import { safeParseNgaJson } from "../parseUtil";
 
 const customProvider = new CustomProvider();
 /**
@@ -21,7 +22,7 @@ async function syncCollectNodes(): Promise<boolean> {
   const r = await http.get(`https://${Global.getNgaDomain()}/nuke.php?__lib=forum_favor2&__act=forum_favor&__output=3&action=get`,{ responseType: "arraybuffer" });
   const $ = cheerio.load(r.data);
   const t = $("script").text().substring($("script").text().indexOf("=") + 1);
-  const d = JSON.parse(t);
+  const d = safeParseNgaJson(t);
   console.log(t);
   if(d.error) {
     vscode.window.showErrorMessage(`获取数据失败, ${d.error[0]}`);
@@ -67,7 +68,7 @@ async function syncCollectPosts(): Promise<Topic[]> {
   let list: Topic[] = [];
   for (let i = 1; i < 100; i++) {
     const r = await http.get(`https://${Global.getNgaDomain()}/thread.php?favor=1&order_by=postdatedesc&lite=js&noprefix&page=${i}`,{ responseType: "arraybuffer" });
-    const d = JSON.parse(r.data);
+    const d = safeParseNgaJson(r.data);
     console.log(d);
     if(d.error) {
       break;
