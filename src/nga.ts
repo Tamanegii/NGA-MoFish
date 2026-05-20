@@ -1,11 +1,13 @@
 import Global from './global';
 import http from './http';
+import axios from 'axios';
+import * as iconv from 'iconv-lite';
 import * as template from 'art-template';
 import * as path from 'path';
 import { TreeNode } from './providers/BaseProvider';
 import topicItemClick from './commands/topicItemClick';
 import {processSmile} from './process/smile';
-import * as JSON5 from 'json5';
+import { safeParseNgaJson, convertBBCodeInContent } from './parseUtil';
 import { Glob } from 'glob';
 import { Node } from './models/node';
 import { Topic } from './models/topic';
@@ -41,7 +43,14 @@ export class NGA {
         const list: Topic[] = [];
         let tids: number[] = [];
         const res = await http.get(`https://${Global.getNgaDomain()}/thread.php?${node.name}&lite=js&page=${page}&noprefix`, { responseType: 'arraybuffer' });
-        let js = JSON.parse(res.data).data;
+        let js: any;
+        try {
+            js = safeParseNgaJson(res.data).data;
+        } catch (err) {
+            console.error('[NGA-MoFish] getTopicListByNode parse error:', err);
+            vscode.window.showErrorMessage('解析节点数据失败');
+            return list;
+        }
         // console.log(js);
         let fid2name = new Map();
         for (let f in js.__F.sub_forums) {
@@ -125,12 +134,16 @@ export class NGA {
 
     static async getTopicByTid(tid: string) {
         const res = await http.get(`https://${Global.getNgaDomain()}/read.php?lite=js&noprefix&page=1&tid=${tid}`, { responseType: 'arraybuffer' });
-        let j = res.data.replace(/"alterinfo":".*?",/g, '').replace(/\[img\]\./g, '<img src=\\"https://img.nga.178.com/attachments').replace(/\[\/img\]/g, '\\">').replace(/\[img\]/g, '<img src=\\"').replace(/\[url\]/g, '<a href=\\"').replace(/\[\/url\]/g, '\\">url</a>').replace(/"signature":".*?",/g, '');
-        // console.log(j);
-        let js = JSON.parse(j).data;
+        let js: any;
+        try {
+            js = NGA.parseJson(res.data);
+        } catch (err) {
+            console.error('[NGA-MoFish] getTopicByTid parse error:', err);
+            vscode.window.showErrorMessage('解析帖子数据失败');
+            return;
+        }
         let node = new TreeNode(js.__T.subject, false);
         node.link = `https://${Global.getNgaDomain()}/read.php?lite=js&noprefix&tid=${tid}`;
-        // 修改为打开到当前选定的选项卡
         try {
             vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup').then(() => {
                 topicItemClick(node);
@@ -140,22 +153,20 @@ export class NGA {
         }
     }    
     static parseJson(data: string): any {
-        let r = data.replace(/\[img\]\./g, '<img style=\\"background-color: #FFFAFA\\" src=\\"https://img.nga.178.com/attachments')
-                    .replace(/\[\/img\]/g, '\\">')
-                    .replace(/\[img\]/g, '<img style=\\"background-color: #FFFAFA\\" src=\\"')
-                    .replace(/\[url\]/g, '<a href=\\"')
-                    .replace(/\[\/url\]/g, '\\">url</a>')
-                    .replace(/"signature":".*?",/g, '')
-                    .replace(/"alterinfo":".*?",/g, '');
-        if (Global.getStickerMode() === '0') {
-            // 无图模式：不直接移除图片（会丢失URL，无法按需加载）
-            // 改为替换成可点击占位，点击后由webview脚本原地加载该图片。
-            r = r.replace(
-                /<img\b[^>]*?src=\\"([^\\"]+)\\"[^>]*?>/g,
-                (_m, src) => `<span class=\\"nga-img-placeholder\\" data-src=\\"${src}\\">[图片] 点击加载</span>`
-            );
+        const parsed = safeParseNgaJson(data);
+        const js = parsed.data;
+        const stickerMode = Global.getStickerMode();
+        if (js.__R) {
+            for (const key of Object.keys(js.__R)) {
+                const row = js.__R[key];
+                if (row && typeof row.content === 'string') {
+                    row.content = convertBBCodeInContent(row.content, stickerMode);
+                }
+                if (row && typeof row.subject === 'string') {
+                    row.subject = convertBBCodeInContent(row.subject, stickerMode);
+                }
+            }
         }
-        let js = JSON5.parse(r).data;
         return js;
     }
 
@@ -328,7 +339,13 @@ export class NGA {
                 responseType: 'arraybuffer'
             });
             // let j = res.data.replace('window.script_muti_get_var_store=', '');
-            let js = JSON.parse(res.data).data;
+            let js: any;
+            try {
+                js = safeParseNgaJson(res.data).data;
+            } catch (err) {
+                console.error('[NGA-MoFish] search parse error:', err);
+                continue;
+            }
             for (let val in js.__T) {
                 const t = js.__T[val];
                 if (t.subject === "帐号权限不足") {
@@ -436,5 +453,66 @@ export class NGA {
         }
         Global.updateNodePage(fid, 1);
         return true;
+    }
+
+    static async postReply(
+        fid: string,
+        tid: number,
+        content: string,
+        quotePid?: string,
+        quoteUid?: string,
+        quoteUname?: string
+    ): Promise<{success: boolean, message: string}> {
+        const cookie = Global.getCookie();
+        if (!cookie) {
+            return { success: false, message: '请先登录' };
+        }
+
+        let postContent = content;
+        if (quotePid && quoteUid && quoteUname) {
+            const now = new Date();
+            const dateStr = `${now.getFullYear()}-${NGA.stillTwo(now.getMonth()+1)}-${NGA.stillTwo(now.getDate())} ${NGA.stillTwo(now.getHours())}:${NGA.stillTwo(now.getMinutes())}`;
+            postContent = `[b]Reply to [pid=${quotePid},${tid},1]Reply[/pid] Post by [uid=${quoteUid}]${quoteUname}[/uid] (${dateStr})[/b]${content}`;
+        }
+
+        const params: Record<string, string> = {
+            action: 'reply',
+            fid: fid,
+            tid: tid.toString(),
+            post_content: postContent,
+            step: '2',
+            nojump: '1',
+            lite: 'htmljs'
+        };
+        if (quotePid) {
+            params.pid = quotePid;
+        }
+
+        const qs = require('qs');
+        const formStr = qs.stringify(params);
+        const encodedData = iconv.encode(formStr, 'gbk');
+
+        try {
+            const res = await axios.post(
+                `https://${Global.getNgaDomain()}/post.php`,
+                encodedData,
+                {
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'Cookie': cookie
+                    },
+                    responseType: 'arraybuffer'
+                }
+            );
+            const decoded = iconv.decode(Buffer.from(res.data), 'gbk');
+            const d = safeParseNgaJson(decoded);
+            if (d.error && d.error['0'] && d.error['0'].includes('发贴完毕')) {
+                return { success: true, message: '回复成功' };
+            }
+            return { success: false, message: d.error?.['0'] || '回复失败' };
+        } catch (err: any) {
+            console.error('[NGA-MoFish] postReply error:', err);
+            return { success: false, message: `回复失败: ${err.message}` };
+        }
     }
 }

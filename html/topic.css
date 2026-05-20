@@ -54,6 +54,22 @@ blockquote p {
   flex: 1;
 }
 
+.topic-header .topic-title-h1 {
+  font-size: 2em;
+}
+
+.topic-header .topic-title-h2 {
+  font-size: 1.5em;
+}
+
+.topic-header .topic-title-h3 {
+  font-size: 1.17em;
+}
+
+.topic-header .topic-title-h4 {
+  font-size: 1em;
+}
+
 .topic-header img {
   width: 73px;
   height: 73px;
@@ -222,13 +238,13 @@ blockquote p {
 .post-reply textarea {
   display: block;
   width: 100%;
-  min-height: 120px;
+  min-height: 60px;
   resize: vertical;
   overflow-y: scroll;
   overflow-wrap: break-word;
   border-radius: 3px;
   padding: 5px;
-  font-size: 14px;
+  font-size: 13px;
   border: 1px solid var(--vscode-editorIndentGuide-background);
   box-sizing: border-box;
   background-color: transparent;
@@ -236,17 +252,23 @@ blockquote p {
 }
 
 .post-reply .submit {
-  margin-top: 10px;
+  margin-top: 6px;
   border: none;
   text-decoration: none;
-  font-weight: 700;
-  font-size: 14px;
+  font-size: 12px;
   outline: none;
-  border-radius: 4px;
-  padding: 5px 10px;
+  border-radius: 3px;
+  padding: 3px 8px;
   background-color: var(--vscode-editor-inactiveSelectionBackground);
   color: var(--vscode-editor-foreground);
   cursor: pointer;
+  opacity: 0.8;
+}
+
+.reply-btn {
+  padding-left: 10px;
+  font-size: 12px;
+  opacity: 0.5;
 }
 
 .page {

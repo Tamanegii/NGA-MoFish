@@ -10,6 +10,7 @@ import { TopicDetail } from "../models/topicDetail";
 import { TopicReply } from "../models/topicReply";
 import axios from "axios";
 import { syncCollectPosts } from "./syncCollect";
+import { safeParseNgaJson } from "../parseUtil";
 const yaml = require("js-yaml");
 
 /**
@@ -25,6 +26,13 @@ const panels: { [key: string]: vscode.WebviewPanel } = {};
  */
 function _getTitle(title: string) {
   return title.length <= 15 ? title : title.slice(0, 15) + "...";
+}
+
+function _getTopicTitleHeadingClass(): string {
+  const heading = Global.getTopicTitleHeading();
+  return ["h1", "h2", "h3", "h4"].includes(heading)
+    ? `topic-title-${heading}`
+    : "topic-title-h1";
 }
 
 /**
@@ -111,6 +119,9 @@ export default function topicItemClick(item: TreeNode) {
       case "collect":
         collectPost(panel, topic);
         break;
+      case "postReply":
+        postReply(panel, topic, message.content, message.quotePid, message.quoteUid, message.quoteUname, item.link, topic.pageNow);
+        break;
       default:
         break;
     }
@@ -146,12 +157,14 @@ function loadOnlyAuthor(panel: vscode.WebviewPanel, topicLink: string) {
           topic: detail,
           // topicYml: yaml.safeDump(detail),
           contextPath: Global.getWebViewContextPath(panel.webview),
+          titleHeadingClass: _getTopicTitleHeadingClass(),
         });
       } else {
         panel.webview.html = NGA.renderPage("topic.html", {
           topic: detail,
           // topicYml: yaml.safeDump(detail),
           contextPath: Global.getWebViewContextPath(panel.webview),
+          titleHeadingClass: _getTopicTitleHeadingClass(),
         });
       }
 
@@ -205,11 +218,13 @@ function loadTopicInPanel(
         panel.webview.html = NGA.renderPage("topic-spic.html", {
           topic: detail,
           contextPath: Global.getWebViewContextPath(panel.webview),
+          titleHeadingClass: _getTopicTitleHeadingClass(),
         });
       } else {
         panel.webview.html = NGA.renderPage("topic.html", {
           topic: detail,
           contextPath: Global.getWebViewContextPath(panel.webview),
+          titleHeadingClass: _getTopicTitleHeadingClass(),
         });
       }
     })
@@ -277,8 +292,7 @@ async function loadReplyLikes(
     `https://${Global.getNgaDomain()}/nuke.php?__lib=topic_recommend&__act=add&tid=${tid}&pid=${pid}&value=1&raw=3&lite=js`,
     { responseType: "arraybuffer" }
   );
-  const t = r.data.replace("window.script_muti_get_var_store=", "");
-  const d = JSON.parse(t);
+  const d = safeParseNgaJson(r.data);
   if (d.error) {
     vscode.window.showErrorMessage(d.error[0]);
     return false;
@@ -334,8 +348,7 @@ async function collectPost(panel: vscode.WebviewPanel, topic: TopicDetail,) {
     )
     .then(function (response: any) {
       console.log(response);
-      const t = response.data.replace("window.script_muti_get_var_store=", "");
-      const d = JSON.parse(t);
+      const d = safeParseNgaJson(response.data);
       console.log(d["data"]);
       const asciiBuffer = Buffer.from(d["data"]["0"]["0"]["name"], "ascii");
       for (let i in d["data"]) {
@@ -380,9 +393,35 @@ async function collectPost(panel: vscode.WebviewPanel, topic: TopicDetail,) {
     )
     .then(function (response: any) {
       console.log(response);
-      const t = response.data.replace("window.script_muti_get_var_store=", "");
-      const d = JSON.parse(t);
+      const d = safeParseNgaJson(response.data);
       console.log(d["data"]);
       vscode.window.showInformationMessage('收藏成功!');
     });
+}
+
+async function postReply(
+  panel: vscode.WebviewPanel,
+  topic: TopicDetail,
+  content: string,
+  quotePid: string | null,
+  quoteUid: string | null,
+  quoteUname: string | null,
+  topicLink: string,
+  page: number
+) {
+  const result = await NGA.postReply(
+    topic.node.name,
+    topic.id,
+    content,
+    quotePid || undefined,
+    quoteUid || undefined,
+    quoteUname || undefined
+  );
+  if (result.success) {
+    vscode.window.showInformationMessage(result.message);
+    panel.webview.postMessage({ command: 'replySuccess' });
+    loadTopicInPanel(panel, topicLink, page);
+  } else {
+    vscode.window.showErrorMessage(result.message);
+  }
 }

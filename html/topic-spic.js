@@ -104,6 +104,26 @@ document.querySelectorAll('.topic-content a[href*="/t/"]').forEach((a) => {
 });
 
 // 评论
+var __quotePid = null;
+var __quoteUid = null;
+var __quoteUname = null;
+
+function quoteReply(pid, uid, uname, floor) {
+  __quotePid = pid;
+  __quoteUid = uid;
+  __quoteUname = uname;
+  document.getElementById('quoteInfo').style.display = 'block';
+  document.getElementById('quoteContent').innerText = '引用 ' + floor + '楼 ' + uname + ' 的回复';
+  document.getElementById('replyBox').focus();
+}
+
+function clearQuote() {
+  __quotePid = null;
+  __quoteUid = null;
+  __quoteUname = null;
+  document.getElementById('quoteInfo').style.display = 'none';
+}
+
 function onSubmit() {
   const content = (document.querySelector('#replyBox').value || '').trim();
   if (!content) {
@@ -111,7 +131,10 @@ function onSubmit() {
   }
 
   vsPostMessage('postReply', {
-    content: content
+    content: content,
+    quotePid: __quotePid,
+    quoteUid: __quoteUid,
+    quoteUname: __quoteUname
   });
 }
 
@@ -176,6 +199,10 @@ window.addEventListener('message', event => {
             console.log('processLabel inner: ', inner);
             a.innerHTML = inner;
           })
+          break;
+      case 'replySuccess':
+          document.getElementById('replyBox').value = '';
+          clearQuote();
           break;
   }
 });
